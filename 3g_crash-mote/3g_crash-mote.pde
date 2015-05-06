@@ -15,9 +15,9 @@
 #include <WaspFrame.h>
 #include <WaspCAN.h>
 
-char apn[] = "m2m.be";
-char login[] = "";
-char password[] = "";
+char apn[] = "web.be";
+char login[] = "web";
+char password[] = "web";
 
 int8_t answer;
 
@@ -32,6 +32,7 @@ bool timeNotSet = true;
 
 int16_t ACCStore[6];
 int16_t CANStore[2];
+int16_t CHStore[6][2];
 unsigned long ACCLast;
 
 unsigned long CANLast;
@@ -48,7 +49,14 @@ void activate3G()
   if ((answer == 1) || (answer == -3))
   {
     state = 1;
-    USB.println(F("_3G module ready..."));
+    if (_3G.setPIN("1111")) 
+    {
+      USB.println(F("_3G module ready..."));
+    }
+    else
+    {
+      USB.println(F("PIN not set"));
+    }
   }
   else
   {
@@ -190,31 +198,48 @@ void sendPosition (int sendInterval)
 {
   if(millis() > GPSLast + sendInterval){
     if(_3G.getGPSinfo()){
-      if(timeNotSet)
+      float latitude = _3G.convert2Degrees(_3G.latitude);
+      float longitude = _3G.convert2Degrees(_3G.longitude);
+
+      if(latitude != 0 && longitude != 0) // Only send data if there is a gprs fix.
       {
-        if (_3G.setTimebyGPS(20,1)){
-          timeNotSet = false;
-        } 
-        else 
+        if(timeNotSet)
         {
-          USB.println(F("RTC NOT SET"));
+          if (_3G.setTimebyGPS(20,1)){
+            timeNotSet = false;
+          } 
+          else 
+          {
+            USB.println(F("RTC NOT SET"));
+          }
         }
+        
+        char latStr[13];
+        dtostrf( latitude, 4, 8, latStr );
+        
+        char lotStr[13];
+        dtostrf( longitude, 4, 8, lotStr );
+
+        RTC.setMode(RTC_ON,RTC_NORMAL_MODE);
+
+        char posData[150];
+        snprintf(posData,sizeof(posData),"{\"g\":{\"la\":%s,\"lo\":%s,\"s\":%s},\"t\":%lu}",
+          latStr,
+          lotStr,
+          _3G.speedOG,
+          RTC.getEpochTime()
+        );
+
+        RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);
+        sendData(posData);
+        USB.println(posData);
+        USB.println(F("GPS"));
+        GPSLast = millis();  
       }
-
-      RTC.setMode(RTC_ON,RTC_NORMAL_MODE);
-
-      char posData[150];
-      snprintf(posData,sizeof(posData),"{\"g\":{\"la\":%s,\"lo\":%s,\"s\":%s},\"t\":%lu}",
-        _3G.convert2Degrees(_3G.latitude),
-        _3G.convert2Degrees(_3G.longitude),
-        _3G.speedOG,
-        RTC.getEpochTime()
-      );
-
-      RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);
-      sendData(posData);
-      USB.println(F("GPS"));
-      GPSLast = millis();
+      else {
+        USB.println(F("GPS not fixed"));
+        GPSLast = millis();
+      }
     }
     else
     {
@@ -309,7 +334,7 @@ void cleanACCStore ()
 /* CAN-bus */
 void activateCAN () 
 {
-  CANI.ON(500);
+  CAN.ON(500);
   CANLast = millis();
   RPMLast = millis();
 }
@@ -317,9 +342,9 @@ void activateCAN ()
 void measureCAN() 
 {
   if(millis() > RPMLast+400){
-      int engineRPM = CANI.getEngineRPM();
+      int engineRPM = CAN.getEngineRPM();
     // Get the throttle position
-    int throttlePosition = CANI.getThrottlePosition();
+    int throttlePosition = CAN.getThrottlePosition();
     if(engineRPM > CANStore[0]){
         CANStore[0] = engineRPM;
     }
@@ -330,11 +355,12 @@ void measureCAN()
   }
 }
 
-void sendCAN () 
+void sendCAN (int sendInterval) 
 {
-  if(millis() > (CANLast + 2000) && CANStore[0] > -1){
-    int fuelLevel = CANI.getFuelLevel();
-    int engineTemp = CANI.getEngineCoolantTemp();
+  measureCAN();
+  if(millis() > (CANLast + sendInterval) && CANStore[0] > -1){
+    int fuelLevel = CAN.getFuelLevel();
+    int engineTemp = CAN.getEngineCoolantTemp();
     char CANData[150];
     snprintf(CANData,sizeof(CANData),"{\"e\":{\"r\":[%i,%i],\"t\":%i,\"f\":%i},\"t\":%lu}",
       CANStore[0],
@@ -391,6 +417,20 @@ void sendDevice (unsigned long sendInterval) {
   }
 }
 
+/* Channels */
+void cleanCHStore ()
+{
+  for(int i=0; i<6; i++){
+    for(int j=0; j<2; j++){
+      if ( (i & 0x01) == 0) {
+        CHStore[j][i] = -1;
+      } else {
+        CHStore[j][i] = 1024;
+      }     
+    }
+  }
+}
+
 void setup()
 {   
     RTC.ON();
@@ -415,6 +455,8 @@ void setup()
     DEVICELast = millis();
     cleanACCStore();
     cleanCANStore();
+    cleanCHStore();
+
 }
 
 void loop()
@@ -440,12 +482,14 @@ void loop()
       break;
     case 6:
       activateACC();
+      activateCAN();
       state = 7;
       break;
     case 7:
       sendPosition(3000);
       sendDevice(60000);
       sendMovement(3000);
+      sendCAN(3200);
   }
 }
 
