@@ -80,6 +80,52 @@ void connectToNetwork()
   }
 }
 
+void showNetWorkInfo()
+{
+  USB.print(F("Network Mode: "));
+  switch (_3G.showsNetworkMode()) {
+    case -1:
+      USB.print(F("CME error code: "));
+      USB.println(_3G.CME_CMS_code, DEC);
+      break;
+    case 0:
+      USB.println(F("Error"));
+      break;
+    case 1:
+      USB.println(F("No Service"));
+      break;
+    case 2:
+      USB.println(F("GSM"));
+      break;
+    case 3:
+      USB.println(F("GPRS"));
+      break;
+    case 4:
+      USB.println(F("EGPRS (EDGE)"));
+      break;
+    case 5:
+      USB.println(F("WCDMA"));
+      break;
+    case 6:
+      USB.println(F("HSDPA only"));
+      break;
+    case 7:
+      USB.println(F("HSUPA only"));
+      break;
+    case 8:
+      USB.println(F("HSPA (HSDPA and HSUPA)"));
+      break;
+  }
+
+  answer = _3G.getRSSI();
+  if (answer != 1)
+  {
+      USB.print(F("Received signal strength indication: "));
+      USB.print(answer,DEC);
+      USB.println(F("dBm"));
+  }
+}
+
 void configureConnection()
 {
   //configures IP connection
@@ -88,9 +134,11 @@ void configureConnection()
   if (answer == 1)
   {
     state = 5;
-    USB.println(F("Done"));
-    USB.print(F("Configuration success. IP address: ")); 
-    USB.println(_3G.buffer_3G);     
+    USB.println(F("Configuration success. "));
+    if (_3G.getIP() == 1) {
+      USB.print(F("IP address: ")); 
+      USB.println(_3G.buffer_3G);
+    } 
   }
   else if (answer < -14)
   {
@@ -176,6 +224,8 @@ void sendData (const char* buff)
   }
 }
 
+
+/* GPS Stuff */
 void startGPS () 
 {
   USB.print(F("Starting GPS..."));
@@ -220,7 +270,7 @@ void sendPosition (int sendInterval)
         char lotStr[13];
         dtostrf( longitude, 4, 8, lotStr );
 
-        RTC.setMode(RTC_ON,RTC_NORMAL_MODE);
+        RTC.setMode(RTC_ON,RTC_NORMAL_MODE);;
 
         char posData[150];
         snprintf(posData,sizeof(posData),"{\"g\":{\"la\":%s,\"lo\":%s,\"s\":%s},\"t\":%lu}",
@@ -230,9 +280,9 @@ void sendPosition (int sendInterval)
           RTC.getEpochTime()
         );
 
-        RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);
+        RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);;
+
         sendData(posData);
-        USB.println(posData);
         USB.println(F("GPS"));
         GPSLast = millis();  
       }
@@ -293,7 +343,8 @@ void sendMovement(int sendInterval)
   measureMovement();
   if(ACC.isON && millis() > ACCLast + sendInterval && ACCStore[0] != 8000){
     if(ACC.check() == 0x32){
-      RTC.setMode(RTC_ON,RTC_NORMAL_MODE);
+
+      RTC.setMode(RTC_ON,RTC_NORMAL_MODE);;
 
       char movData[150];
       snprintf(movData,sizeof(movData),"{\"a\":{\"d\":[%i,%i],\"s\":[%i,%i],\"a\":[%i,%i]},\"t\":%lu}",
@@ -305,11 +356,14 @@ void sendMovement(int sendInterval)
         ACCStore[5],
         RTC.getEpochTime()
       );
+
+      RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);;
+
       sendData(movData);
       USB.println(F("ACC"));
       cleanACCStore();
       ACCLast = millis();
-      RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);
+      
     }
     else
     {
@@ -361,6 +415,9 @@ void sendCAN (int sendInterval)
   if(millis() > (CANLast + sendInterval) && CANStore[0] > -1){
     int fuelLevel = CAN.getFuelLevel();
     int engineTemp = CAN.getEngineCoolantTemp();
+
+    RTC.setMode(RTC_ON,RTC_NORMAL_MODE);;
+
     char CANData[150];
     snprintf(CANData,sizeof(CANData),"{\"e\":{\"r\":[%i,%i],\"t\":%i,\"f\":%i},\"t\":%lu}",
       CANStore[0],
@@ -369,6 +426,9 @@ void sendCAN (int sendInterval)
       fuelLevel,
       RTC.getEpochTime()
     );
+
+    RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);;
+
     USB.println(CANData);
     cleanCANStore();
     CANLast = millis();
@@ -389,8 +449,7 @@ void cleanCANStore ()
 /* Device */
 void sendDevice (unsigned long sendInterval) {
   if(millis() > DEVICELast + sendInterval){
-    
-    RTC.setMode(RTC_ON,RTC_NORMAL_MODE);
+    showNetWorkInfo();
 
     uint8_t BattLevel = PWR.getBatteryLevel();
 
@@ -402,6 +461,8 @@ void sendDevice (unsigned long sendInterval) {
     char DeviceTempStr[5];
     dtostrf(DeviceTemp,3,1, DeviceTempStr);
 
+    RTC.setMode(RTC_ON,RTC_NORMAL_MODE);;
+
     char DEVICEData[200];
     snprintf(DEVICEData,sizeof(DEVICEData),"{\"d\":{\"b\":%i,\"p\":%s,\"t\":%s},\"t\":%lu}",
       BattLevel,
@@ -409,11 +470,12 @@ void sendDevice (unsigned long sendInterval) {
       DeviceTempStr,
       RTC.getEpochTime()
     );
+
+    RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);;
+
     sendData(DEVICEData);
     USB.println(F("DEVICE"));
     DEVICELast = millis();
-
-    RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);
   }
 }
 
@@ -472,6 +534,7 @@ void loop()
       startGPS();
       break;
     case 3:
+      showNetWorkInfo();
       state = 4;
       break;
     case 4:
@@ -482,14 +545,14 @@ void loop()
       break;
     case 6:
       activateACC();
-      activateCAN();
+      //activateCAN();
       state = 7;
       break;
     case 7:
       sendPosition(3000);
       sendDevice(60000);
       sendMovement(3000);
-      sendCAN(3200);
+      //sendCAN(3200);
   }
 }
 

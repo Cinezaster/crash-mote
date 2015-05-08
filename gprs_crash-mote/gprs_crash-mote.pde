@@ -245,8 +245,6 @@ void sendPosition (int sendInterval)
       char speedOGStr[10];
       dtostrf( speedOG, 2, 4, speedOGStr );
 
-      RTC.setMode(RTC_ON,RTC_NORMAL_MODE);
-
       char posData[150];
       snprintf(posData,sizeof(posData),"{\"g\":{\"la\":%s,\"lo\":%s,\"s\":%s},\"t\":%lu}",
         latStr,
@@ -255,7 +253,6 @@ void sendPosition (int sendInterval)
         RTC.getEpochTime()
       );
 
-      RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);
       sendData(posData);
       USB.println(F("GPS"));
       GPSLast = millis();
@@ -310,7 +307,6 @@ void sendMovement(int sendInterval)
   measureMovement();
   if(ACC.isON && millis() > ACCLast + sendInterval && ACCStore[0] != 8000){
     if(ACC.check() == 0x32){
-      RTC.setMode(RTC_ON,RTC_NORMAL_MODE);
 
       char movData[150];
       snprintf(movData,sizeof(movData),"{\"a\":{\"d\":[%i,%i],\"s\":[%i,%i],\"a\":[%i,%i]},\"t\":%lu}",
@@ -326,7 +322,6 @@ void sendMovement(int sendInterval)
       USB.println(F("ACC"));
       cleanACCStore();
       ACCLast = millis();
-      RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);
     }
     else
     {
@@ -356,8 +351,6 @@ void cleanACCStore ()
 /* Device */
 void sendDevice (unsigned long sendInterval) {
   if(millis() > DEVICELast + sendInterval){
-    
-    RTC.setMode(RTC_ON,RTC_NORMAL_MODE);
 
     uint8_t BattLevel = PWR.getBatteryLevel();
 
@@ -379,8 +372,6 @@ void sendDevice (unsigned long sendInterval) {
     sendData(DEVICEData);
     USB.println(F("DEVICE"));
     DEVICELast = millis();
-
-    RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);
   }
 }
 
@@ -403,7 +394,6 @@ void setup()
     RTC.ON();
     USB.print(F("Date & Time ==> "));
     USB.println(RTC.getTime());
-    RTC.setMode(RTC_OFF,RTC_NORMAL_MODE);
     
     USB.println(F("********************************"));
 
